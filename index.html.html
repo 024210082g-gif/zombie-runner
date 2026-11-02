@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Andean Zombie Runner</title>
+    <!-- Fuente moderna de Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&family=Ubuntu:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { overflow: hidden; background-color: #0b1014; font-family: 'Ubuntu', sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        
+        /* Interfaz (HUD) - Estilo Glassmorphism */
+        #hud { 
+            position: absolute; top: 20px; left: 20px; z-index: 10; 
+            display: flex; flex-direction: column; gap: 12px;
+            pointer-events: none;
+        }
+        .hud-line { 
+            background: rgba(15, 23, 30, 0.7); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+            padding: 10px 20px; font-size: 18px; font-weight: 700; color: #fff;
+            display: flex; align-items: center; justify-content: space-between;
+            min-width: 180px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        .hud-line span { font-family: 'Teko', sans-serif; font-size: 26px; color: #4ade80; margin-left: 15px; }
+        #ui-arma { color: #38bdf8; }
+        
+        /* Indicador de Sigilo */
+        #stealth-ui { 
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); 
+            background: rgba(34, 197, 94, 0.2); border: 2px solid #22c55e;
+            padding: 10px 30px; border-radius: 30px; box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+            font-size: 20px; font-weight: bold; color: #4ade80; text-transform: uppercase;
+            letter-spacing: 2px; display: none; z-index: 10; pointer-events: none;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; transform: translateX(-50%) scale(1); }
+            50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
+        }
+
+        /* Menú y Overlays */
+        #overlay { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: radial-gradient(circle, rgba(15,23,30,0.85) 0%, rgba(0,0,0,0.95) 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            color: white; z-index: 20; text-align: center; backdrop-filter: blur(5px);
+        }
+        h1 { 
+            font-family: 'Teko', sans-serif; font-size: 5rem; color: #ff4444; 
+            margin-bottom: 5px; text-transform: uppercase; letter-spacing: 4px;
+            text-shadow: 0 0 30px rgba(255, 0, 0, 0.6); line-height: 1;
+        }
+        .subtitle { color: #94a3b8; font-size: 1.1rem; margin-bottom: 30px; }
+        
+        .menu-card {
+            background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px; padding: 25px 40px; margin-bottom: 30px;
+            max-width: 550px; text-align: left; line-height: 1.6;
+        }
+        .menu-card h3 { color: #facc15; font-size: 1.2rem; margin-bottom: 15px; text-transform: uppercase; }
+        .control-row { display: flex; justify-content: space-between; margin-bottom: 10px; color: #cbd5e1; }
+        .key { background: #334155; padding: 3px 10px; border-radius: 6px; font-family: monospace; font-weight: bold; color: #fff; }
+        
+        button { 
+            padding: 16px 60px; font-size: 1.8rem; font-family: 'Teko', sans-serif;
+            background: linear-gradient(90deg, #dc2626, #991b1b); color: white; 
+            border: none; border-radius: 40px; cursor: pointer; transition: 0.3s; 
+            box-shadow: 0 10px 25px rgba(220, 38, 38, 0.5); text-transform: uppercase; letter-spacing: 2px;
+        }
+        button:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 15px 35px rgba(220, 38, 38, 0.7); }
+
+        #crosshair { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.7); border-radius: 50%;
+            pointer-events: none; display: none; z-index: 10;
+        }
+        #crosshair::after {
+            content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 4px; height: 4px; background: #ff4444; border-radius: 50%;
+        }
+        
+        /* Efecto de daño visual */
+        .flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; z-index: 15; transition: opacity 0.15s ease-out; }
+        #damage-flash { background: radial-gradient(circle, rgba(255,0,0,0.1) 0%, rgba(200,0,0,0.5) 100%); }
+        #heal-flash { background: radial-gradient(circle, rgba(0,255,0,0.1) 0%, rgba(0,180,0,0.4) 100%); }
+        #ammo-flash { background: radial-gradient(circle, rgba(255,235,59,0.1) 0%, rgba(200,180,0,0.4) 100%); }
+        #speed-flash { background: radial-gradient(circle, rgba(0,188,212,0.1) 0%, rgba(0,150,180,0.4) 100%); }
+
+        /* Banner dinámico de Nivel */
+        #level-banner { 
+            position: absolute; top: 20%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+            background: linear-gradient(135deg, rgba(234, 179, 8, 0.95), rgba(249, 115, 22, 0.95));
+            border: 2px solid #fef08a; border-radius: 20px; padding: 25px 50px;
+            text-align: center; color: #fff; box-shadow: 0 15px 40px rgba(249, 115, 22, 0.5);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; z-index: 30; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #level-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        #level-banner h2 { font-family: 'Teko', sans-serif; font-size: 4rem; line-height: 1; text-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 5px;}
+        #level-banner p { font-size: 1.2rem; font-weight: bold; color: #fffbeb; }
+    </style>
+</head>
+<body>
+
+    <div id="damage-flash" class="flash"></div>
+    <div id="heal-flash" class="flash"></div>
+    <div id="ammo-flash" class="flash"></div>
+    <div id="speed-flash" class="flash"></div>
+    
+    <div id="level-banner">
+        <h2 id="banner-title">NIVEL COMPLETADO</h2>
+        <p id="banner-reward">Recompensas asignadas</p>
+    </div>
+
+    <!-- Interfaz de Juego -->
+    <div id="hud">
+        <div class="hud-line">❤️ Vidas <span id="ui-vidas">3</span></div>
+        <div class="hud-line">🟡 Munición <span id="ui-municion" style="color: #facc15;">0</span></div>
+        <div class="hud-line">🔫 Arma <span id="ui-arma">Inactiva</span></div>
+        <div class="hud-line">🏆 Nivel <span id="ui-nivel" style="color: #fff;">1</span></div>
+    </div>
+    
+    <div id="stealth-ui">🌿 Oculto en la maleza 🌿</div>
+    <div id="crosshair"></div>
+
+    <!-- Menú Principal -->
+    <div id="overlay">
+        <h1 id="menu-title">Andean Survival</h1>
+        <p class="subtitle" id="menu-subtitle">Sobrevive en los caminos de la selva esquivando hordas zombis.</p>
+        
+        <div class="menu-card">
+            <h3>🎮 Controles y Reglas</h3>
+            <div class="control-row"><span>Moverse entre carriles</span><span class="key">A / D</span></div>
+            <div class="control-row"><span>Correr más rápido (Sprint)</span><span class="key">SHIFT</span></div>
+            <div class="control-row"><span>Disparar Arma</span><span class="key">ESPACIO</span></div>
+            <div class="control-row"><span>Pausar Juego</span><span class="key">P</span></div>
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 15px 0;">
+            <ul style="padding-left: 20px; color: #cbd5e1; font-size: 0.95rem;">
+                <li style="margin-bottom: 5px;">Avanza automáticamente al siguiente nivel cada 40s.</li>
+                <li style="margin-bottom: 5px;">Cada nuevo nivel te otorgará recompensas (Balas, Vidas o Armas).</li>
+                <li><b>Sigilo:</b> Si te quedas sin munición, camina por el pasto a los costados para evitar ser detectado.</li>
+            </ul>
+        </div>
+        <button id="btn-start">Iniciar Misión</button>
+    </div>
+
+    <!-- Importar Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.150.1/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Configuración Básica ---
+        let scene, camera, renderer, clock;
+        let gameState = 'MENU'; 
+        let timeElapsed = 0;
+        
+        // --- Variables del Jugador ---
+        const player = {
+            x: 0,
+            vidas: 3,
+            municion: 0,
+            armaTimer: 0,
+            speedTimer: 0,
+            sprinting: false,
+            baseSpeed: 10,
+            hitboxRadius: 1.0,
+            isHiding: false,
+            currentLane: 0 // -1 (izq), 0 (centro), 1 (der)
+        };
+        const laneWidth = 6; 
+
+        // --- Entorno y Progresión ---
+        let gameSpeed = 25;
+        let roadWidth = 12; 
+        const stealthThreshold = 7; 
+        let activeObjects = [];
+        let groundMaterial;
+        let ground; 
+        let spawnTimer = 0;
+        let cerroTimer = 0;
+        
+        let currentLevel = 1;
+        let levelTimer = 0;
+        const levelDuration = 40; 
+        let isTransitioning = false;
+
+        let armaMesh; 
+        let muzzleFlash;
+
+        // --- Sistema de Audio Procedural ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            if (type === 'shoot') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'zombie_death') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.linearRampToValueAtTime(20, now + 0.3);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'pickup') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(600, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'hurt') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(50, now);
+                osc.frequency.linearRampToValueAtTime(10, now + 0.4);
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            } else if (type === 'step') { 
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(60, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now); 
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'levelup') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(450, now + 0.1);
+                osc.frequency.setValueAtTime(600, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+            }
+        }
+
+        // --- Referencias UI ---
+        const uiVidas = document.getElementById('ui-vidas');
+        const uiMunicion = document.getElementById('ui-municion');
+        const uiArma = document.getElementById('ui-arma');
+        const uiNivel = document.getElementById('ui-nivel');
+        const uiStealth = document.getElementById('stealth-ui');
+        const overlay = document.getElementById('overlay');
+        const btnStart = document.getElementById('btn-start');
+        const crosshair = document.getElementById('crosshair');
+        const menuTitle = document.getElementById('menu-title');
+        const menuSubtitle = document.getElementById('menu-subtitle');
+        const levelBanner = document.getElementById('level-banner');
+        const bannerTitle = document.getElementById('banner-title');
+        const bannerReward = document.getElementById('banner-reward');
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x8ca6b5);
+            scene.fog = new THREE.FogExp2(0x8ca6b5, 0.015); 
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 350);
+            camera.position.set(0, 1.8, 0); 
+            scene.add(camera); 
+
+            // Crear modelo del arma
+            const armaGroup = new THREE.Group();
+            const cañonGeo = new THREE.BoxGeometry(0.15, 0.15, 1.0);
+            const cañonMat = new THREE.MeshStandardMaterial({color: 0x1e293b, metalness: 0.6});
+            const cañon = new THREE.Mesh(cañonGeo, cañonMat);
+            cañon.position.set(0, 0, -0.5);
+            armaGroup.add(cañon);
+            
+            const flashGeo = new THREE.PlaneGeometry(0.8, 0.8);
+            const flashMat = new THREE.MeshBasicMaterial({color: 0xfef08a, transparent: true, opacity: 0, side: THREE.DoubleSide});
+            muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
+            muzzleFlash.position.set(0, 0, -1.1);
+            armaGroup.add(muzzleFlash);
+
+            armaGroup.position.set(0.4, -0.4, -0.8);
+            camera.add(armaGroup);
+            armaMesh = armaGroup;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            // Luces
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); 
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(20, 50, -20);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            crearEntorno();
+
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            btnStart.addEventListener('click', startGame);
+
+            renderer.setAnimationLoop(animate);
+        }
+
+        // --- Generación de Gráficos Procedimentales ---
+        function crearTexturaCamino() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = '#4b4337'; // Tierra oscura
+            ctx.fillRect(0, 0, 512, 512);
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = 0.3;
+            for(let y=0; y<512; y+=40) {
+                ctx.fillRect(170, y, 8, 20);
+                ctx.fillRect(342, y, 8, 20);
+            }
+            ctx.globalAlpha = 1.0;
+
+            for (let i = 0; i < 3000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#3a342a' : '#5c5245';
+                ctx.fillRect(Math.random() * 512, Math.random() * 512, 4, 4);
+            }
+
+            ctx.fillStyle = '#2d4a1f'; // Pasto denso
+            ctx.fillRect(0, 0, 100, 512); 
+            ctx.fillRect(412, 0, 100, 512); 
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1, 20); 
+            return texture;
+        }
+
+        function crearEntorno() {
+            const textura = crearTexturaCamino();
+            groundMaterial = new THREE.MeshStandardMaterial({ map: textura, roughness: 1.0 });
+            const groundGeo = new THREE.PlaneGeometry(60, 400);
+            ground = new THREE.Mesh(groundGeo, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.z = -100;
+            ground.receiveShadow = true;
+            scene.add(ground);
+        }
+
+        function crearZombi(tipo) {
+            const group = new THREE.Group();
+            const colorPiel = tipo === 'RAPIDO' ? 0xdc2626 : 0x16a34a; // Rojo oscuro o verde
+            const matPiel = new THREE.MeshStandardMaterial({ color: colorPiel });
+            const matRopa = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+
+            const cuerpoGeo = new THREE.BoxGeometry(1, 1.5, 0.5);
+            const cuerpo = new THREE.Mesh(cuerpoGeo, matRopa);
+            cuerpo.position.y = 1.25; cuerpo.castShadow = true;
+            group.add(cuerpo);
+
+            const cabezaGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+            const cabeza = new THREE.Mesh(cabezaGeo, matPiel);
+            cabeza.position.y = 2.3; cabeza.castShadow = true;
+            group.add(cabeza);
+
+            const brazoGeo = new THREE.BoxGeometry(0.3, 0.3, 1);
+            const brazoI = new THREE.Mesh(brazoGeo, matPiel);
+            brazoI.position.set(-0.7, 1.5, 0.3);
+            group.add(brazoI);
+            
+            const brazoD = new THREE.Mesh(brazoGeo, matPiel);
+            brazoD.position.set(0.7, 1.5, 0.3);
+            group.add(brazoD);
+
+            return group;
+        }
+
+        function crearItem(tipo) {
+            let color, geo;
+            if (tipo === 'BOTIQUIN') { color = 0xffffff; geo = new THREE.BoxGeometry(0.8, 0.8, 0.8); }
+            if (tipo === 'ARMA') { color = 0x3b82f6; geo = new THREE.BoxGeometry(1.2, 0.4, 0.4); }
+            if (tipo === 'MUNICION') { color = 0xfacc15; geo = new THREE.SphereGeometry(0.5, 8, 8); }
+            if (tipo === 'ENERGIA') { color = 0x06b6d4; geo = new THREE.CylinderGeometry(0.3, 0.3, 1, 8); }
+
+            const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: color, metalness: 0.3 }));
+            mesh.position.y = 0.6; mesh.castShadow = true;
+            const group = new THREE.Group(); group.add(mesh);
+            return group;
+        }
+
+        function crearArbol() {
+            const group = new THREE.Group();
+            const tronco = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x4a3424 }));
+            tronco.position.y = 1.5; group.add(tronco);
+            const copa = new THREE.Mesh(new THREE.ConeGeometry(3, 6, 6), new THREE.MeshStandardMaterial({ color: 0x1f421f }));
+            copa.position.y = 4.5; group.add(copa);
+            return group;
+        }
+
+        function crearCerro() {
+            const group = new THREE.Group();
+            const alt = 50 + Math.random() * 50;
+            const radio = 40 + Math.random() * 30;
+            const mesh = new THREE.Mesh(new THREE.ConeGeometry(radio, alt, 8), new THREE.MeshStandardMaterial({ color: 0x273822, roughness: 0.9 }));
+            mesh.position.y = alt / 2 - 5; group.add(mesh);
+            return group;
+        }
+
+        // --- Lógica Principal del Juego ---
+        function startGame() {
+            if (gameState === 'GAMEOVER') resetGame();
+            gameState = 'PLAYING';
+            overlay.style.display = 'none';
+            crosshair.style.display = 'block';
+            clock.start();
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                overlay.style.display = 'flex';
+                menuTitle.innerText = "PAUSA";
+                menuSubtitle.innerText = "Tómate un respiro.";
+                btnStart.innerText = "Continuar Misión";
+            } else if (gameState === 'PAUSED') {
+                startGame();
+            }
+        }
+
+        function resetGame() {
+            player.vidas = 3; player.municion = 0; player.armaTimer = 0;
+            player.speedTimer = 0; player.currentLane = 0;
+            camera.position.x = 0; camera.position.z = 0; 
+            timeElapsed = 0; gameSpeed = 25;
+            currentLevel = 1; levelTimer = 0; isTransitioning = false;
+            
+            activeObjects.forEach(obj => scene.remove(obj.mesh));
+            activeObjects = [];
+            updateHUD();
+        }
+
+        function spawnSingleObject(forcedType = null, forcedLane = null) {
+            const rand = Math.random();
+            let type, meshGroup, isEnemy = false, speed = 0;
+
+            if (forcedType) {
+                type = forcedType;
+                if (type === 'ZOMBI_LENTO') { meshGroup = crearZombi('LENTO'); isEnemy = true; speed = 12; }
+                else if (type === 'ZOMBI_RAPIDO') { meshGroup = crearZombi('RAPIDO'); isEnemy = true; speed = 26; }
+            } else {
+                if (rand < 0.50) { type = 'ZOMBI_LENTO'; meshGroup = crearZombi('LENTO'); isEnemy = true; speed = 12; }
+                else if (rand < 0.70) { type = 'ZOMBI_RAPIDO'; meshGroup = crearZombi('RAPIDO'); isEnemy = true; speed = 26; }
+                else if (rand < 0.80) { type = 'MUNICION'; meshGroup = crearItem('MUNICION'); }
+                else if (rand < 0.87) { type = 'ARMA'; meshGroup = crearItem('ARMA'); }
+                else if (rand < 0.94) { type = 'BOTIQUIN'; meshGroup = crearItem('BOTIQUIN'); }
+                else { type = 'ENERGIA'; meshGroup = crearItem('ENERGIA'); }
+            }
+
+            const lane = forcedLane !== null ? forcedLane : (Math.floor(Math.random() * 3) - 1);
+            const spawnX = lane * laneWidth;
+            const zOffset = Math.random() * 10; 
+            meshGroup.position.set(spawnX, 0, camera.position.z - 200 - zOffset); 
+
+            scene.add(meshGroup);
+            activeObjects.push({
+                mesh: meshGroup, type: type, isEnemy: isEnemy, speed: speed, radius: 1.2,
+                lane: lane, switchTimer: Math.random() * 2 
+            });
+        }
+
+        function spawnObject() {
+            const chanceHorda = 0.1 + (currentLevel * 0.05); 
+            if (currentLevel >= 2 && Math.random() < chanceHorda) {
+                let carriles = [-1, 0, 1].sort(() => Math.random() - 0.5); 
+                let cantidadZombis = (currentLevel >= 3 && Math.random() > 0.5) ? 3 : 2;
+                for(let i = 0; i < cantidadZombis; i++) {
+                    spawnSingleObject(Math.random() > 0.6 ? 'ZOMBI_RAPIDO' : 'ZOMBI_LENTO', carriles[i]);
+                }
+            } else {
+                spawnSingleObject();
+            }
+
+            if (Math.random() > 0.4) {
+                const arbol = crearArbol();
+                const isLeft = Math.random() > 0.5;
+                arbol.position.set(isLeft ? -(roadWidth + 6 + Math.random()*10) : (roadWidth + 6 + Math.random()*10), 0, camera.position.z - 200);
+                scene.add(arbol);
+                activeObjects.push({ mesh: arbol, type: 'ARBOL', isEnemy: false, speed: 0, radius: 0 });
+            }
+        }
+
+        function spawnCerrosEntorno() {
+            const cerro = crearCerro();
+            const isLeft = Math.random() > 0.5;
+            cerro.position.set(isLeft ? -(70 + Math.random()*40) : (70 + Math.random()*40), 0, camera.position.z - 350);
+            scene.add(cerro);
+            activeObjects.push({ mesh: cerro, type: 'CERRO', isEnemy: false, speed: 0, radius: 0 });
+        }
+
+        function shoot() {
+            if (player.armaTimer <= 0 || player.municion <= 0 || isTransitioning) return;
+            player.municion--;
+            playSound('shoot'); updateHUD();
+            
+            armaMesh.position.z += 0.2; armaMesh.rotation.x -= 0.1;
+            muzzleFlash.material.opacity = 1;
+            setTimeout(() => { 
+                muzzleFlash.material.opacity = 0; 
+                armaMesh.position.z -= 0.2; armaMesh.rotation.x += 0.1;
+            }, 50);
+            camera.position.y = 1.85; 
+            
+            for (let i = 0; i < activeObjects.length; i++) {
+                let obj = activeObjects[i];
+                if (obj.isEnemy && obj.mesh.position.z < camera.position.z && obj.mesh.position.z > camera.position.z - 80) {
+                    if (Math.abs(obj.mesh.position.x - camera.position.x) < 3.0) {
+                        playSound('zombie_death'); 
+                        obj.mesh.scale.set(0.1, 0.1, 0.1);
+                        setTimeout(() => { scene.remove(obj.mesh); }, 100);
+                        activeObjects.splice(i, 1);
+                        break; 
+                    }
+                }
+            }
+        }
+
+        function handleCollisions() {
+            player.isHiding = (Math.abs(camera.position.x) > stealthThreshold) && (player.municion === 0);
+            uiStealth.style.display = player.isHiding ? 'block' : 'none';
+
+            for (let i = activeObjects.length - 1; i >= 0; i--) {
+                let obj = activeObjects[i];
+                if (obj.type === 'ARBOL' || obj.type === 'CERRO') continue;
+
+                let dz = obj.mesh.position.z - camera.position.z;
+                let dx = obj.mesh.position.x - camera.position.x;
+                let distance = Math.sqrt(dx*dx + dz*dz);
+
+                if (distance < player.hitboxRadius + obj.radius && obj.mesh.position.z < camera.position.z + 1.5) {
+                    if (obj.isEnemy) {
+                        if (!player.isHiding) {
+                            player.vidas--;
+                            playSound('hurt'); flashScreen('damage');
+                            if (player.vidas <= 0) triggerGameOver();
+                        } else { continue; }
+                    } else if (obj.type === 'BOTIQUIN') {
+                        playSound('pickup'); player.vidas = Math.min(5, player.vidas + 1); flashScreen('heal');
+                    } else if (obj.type === 'ARMA') {
+                        playSound('pickup'); player.armaTimer += 20; flashScreen('ammo');
+                    } else if (obj.type === 'MUNICION') {
+                        playSound('pickup'); player.municion += 15; flashScreen('ammo');
+                    } else if (obj.type === 'ENERGIA') {
+                        playSound('pickup'); player.speedTimer = 10; flashScreen('speed');
+                    }
+
+                    scene.remove(obj.mesh);
+                    activeObjects.splice(i, 1);
+                    updateHUD();
+                }
+            }
+        }
+
+        function flashScreen(type) {
+            let el = document.getElementById(type + '-flash');
+            if(el) { el.style.opacity = '1'; setTimeout(() => { el.style.opacity = '0'; }, 150); }
+        }
+
+        function triggerGameOver() {
+            gameState = 'GAMEOVER';
+            overlay.style.display = 'flex';
+            crosshair.style.display = 'none';
+            menuTitle.innerText = "FIN DEL CAMINO";
+            menuSubtitle.innerText = `Llegaste hasta el Nivel ${currentLevel}. Buen intento.`;
+            btnStart.innerText = "Reintentar";
+        }
+
+        function updateHUD() {
+            uiVidas.innerText = player.vidas;
+            uiMunicion.innerText = player.municion;
+            uiNivel.innerText = currentLevel;
+            uiArma.style.color = player.armaTimer > 0 ? '#4ade80' : '#38bdf8';
+            uiArma.innerText = player.armaTimer > 0 ? player.armaTimer.toFixed(1) + "s" : "INACTIVA";
+            armaMesh.visible = (player.armaTimer > 0);
+        }
+
+        // --- SISTEMA DINÁMICO DE NIVELES Y RECOMPENSAS ---
+        function nextLevel() {
+            isTransitioning = true;
+            currentLevel++;
+            gameSpeed += 3; // Aumentar dificultad levemente
+            levelTimer = 0;
+            
+            // Asignar 1 Sola Recompensa Aleatoria por Nivel
+            let recompensaTexto = "";
+            const tipoRecompensa = Math.floor(Math.random() * 3); // Escoge 0, 1 o 2 aleatoriamente
+            
+            if (tipoRecompensa === 0) { 
+                // Recompensa 1: Solo Munición
+                player.municion += 20;
+                recompensaTexto = "RECOMPENSA: +20 BALAS";
+                flashScreen('ammo');
+            } else if (tipoRecompensa === 1) { 
+                // Recompensa 2: Solo Arma
+                player.armaTimer += 25;
+                recompensaTexto = "RECOMPENSA: +25s ARMA ACTIVADA";
+                flashScreen('ammo');
+            } else { 
+                // Recompensa 3: Vida Extra (O Velocidad si ya tienes la vida al máximo)
+                if (player.vidas < 5) {
+                    player.vidas++;
+                    recompensaTexto = "RECOMPENSA: +1 VIDA EXTRA";
+                    flashScreen('heal');
+                } else {
+                    player.speedTimer = 15;
+                    recompensaTexto = "RECOMPENSA: +15s SPRINT EXTRA";
+                    flashScreen('speed');
+                }
+            }
+            
+            playSound('levelup');
+            updateHUD();
+
+            // Mostrar Banner
+            bannerTitle.innerText = `¡NIVEL ${currentLevel}!`;
+            bannerReward.innerText = recompensaTexto;
+            levelBanner.classList.add('show');
+            
+            setTimeout(() => {
+                levelBanner.classList.remove('show');
+                isTransitioning = false;
+            }, 3000);
+        }
+
+        // --- Controles ---
+        function onKeyDown(e) {
+            if (gameState !== 'PLAYING' || isTransitioning) {
+                if (e.key.toLowerCase() === 'p' && !isTransitioning) togglePause();
+                return;
+            }
+            const k = e.key.toLowerCase();
+            if ((k === 'a' || k === 'arrowleft') && player.currentLane > -1) player.currentLane--;
+            if ((k === 'd' || k === 'arrowright') && player.currentLane < 1) player.currentLane++;
+            if (e.key === 'Shift') player.sprinting = true;
+            if (e.key === ' ') shoot();
+            if (k === 'p') togglePause();
+        }
+        function onKeyUp(e) { if (e.key === 'Shift') player.sprinting = false; }
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Bucle de Animación ---
+        function animate() {
+            const dt = clock.getDelta();
+
+            if (gameState === 'PLAYING' && !isTransitioning) {
+                timeElapsed += dt;
+                levelTimer += dt;
+                if (levelTimer >= levelDuration) nextLevel();
+
+                if (player.speedTimer > 0) player.speedTimer -= dt;
+                
+                let currentSpeed = gameSpeed;
+                if (player.sprinting) currentSpeed *= 1.4;
+                if (player.speedTimer > 0) currentSpeed *= 1.5; 
+                
+                const targetFOV = (player.sprinting || player.speedTimer > 0) ? 90 : 75;
+                camera.fov += (targetFOV - camera.fov) * 8 * dt;
+                camera.updateProjectionMatrix();
+
+                if (player.armaTimer > 0) {
+                    player.armaTimer -= dt;
+                    if (player.armaTimer <= 0) player.armaTimer = 0;
+                    updateHUD();
+                }
+
+                // Interpolar cámara al carril
+                const targetX = player.currentLane * laneWidth;
+                camera.position.x += (targetX - camera.position.x) * 10 * dt;
+                camera.position.z -= currentSpeed * dt;
+
+                // Efecto de cabeceo y sonido de pasos
+                let bobSpeed = (player.sprinting || player.speedTimer > 0) ? 18 : 12;
+                camera.position.y = 1.8 + Math.abs(Math.sin(timeElapsed * bobSpeed)) * 0.15;
+                if (player.lastStep === undefined) player.lastStep = 0;
+                player.lastStep += dt * bobSpeed;
+                if (player.lastStep > Math.PI) { playSound('step'); player.lastStep -= Math.PI; }
+
+                if (ground) {
+                    ground.position.z = camera.position.z - 150;
+                    groundMaterial.map.offset.y = camera.position.z * 0.05;
+                }
+
+                for (let i = activeObjects.length - 1; i >= 0; i--) {
+                    let obj = activeObjects[i];
+                    if (!obj.isEnemy && obj.type !== 'ARBOL' && obj.type !== 'CERRO') {
+                        obj.mesh.children[0].rotation.y += dt * 2; obj.mesh.children[0].rotation.x += dt;
+                    }
+
+                    if (obj.isEnemy) {
+                        obj.mesh.position.z += obj.speed * dt;
+                        
+                        // --- IA Zombis Rápidos que se quedó cortada ---
+                        if (obj.type === 'ZOMBI_RAPIDO') {
+                            obj.switchTimer -= dt;
+                            if (obj.switchTimer <= 0) {
+                                obj.lane = Math.random() > 0.4 ? player.currentLane : (Math.floor(Math.random() * 3) - 1);
+                                obj.switchTimer = 1.5 + Math.random() * 2;
+                            }
+                            const targetZombieX = obj.lane * laneWidth;
+                            obj.mesh.position.x += (targetZombieX - obj.mesh.position.x) * 3 * dt;
+                        }
+                    }
+
+                    // Destruir objetos que ya pasaron la cámara
+                    if (obj.mesh.position.z > camera.position.z + 10) {
+                        scene.remove(obj.mesh);
+                        activeObjects.splice(i, 1);
+                    }
+                }
+
+                // Generadores
+                spawnTimer -= dt;
+                if (spawnTimer <= 0) {
+                    spawnObject();
+                    spawnTimer = Math.max(0.4, (1.2 - (currentLevel * 0.08)));
+                }
+
+                cerroTimer -= dt;
+                if (cerroTimer <= 0) {
+                    spawnCerrosEntorno();
+                    cerroTimer = 1.5 + Math.random() * 2;
+                }
+
+                handleCollisions();
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
